@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MANU AI</title>
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Marked.js for Markdown -->
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <!-- Phosphor Icons -->
+  <script src="https://unpkg.com/@phosphor-icons/web"></script>
+  <style>
+    body { background-color: #131314; color: #e3e3e3; font-family: sans-serif; }
+    .glass { background: rgba(30, 31, 32, 0.7); backdrop-filter: blur(12px); border: 1px solid rgba(255, 255, 255, 0.08); }
+    .prose p { margin-bottom: 0.5rem; }
+    .prose code { background: #282a2c; padding: 2px 4px; border-radius: 4px; }
+  </style>
+</head>
+<body class="h-screen flex flex-col justify-between overflow-hidden">
+
+  <!-- Header -->
+  <header class="flex justify-between items-center p-4 border-b border-zinc-800 glass">
+    <div class="flex items-center gap-2">
+      <div class="w-8 h-8 rounded-full bg-gradient-to-tr from-blue-500 via-indigo-500 to-purple-500 flex items-center justify-center font-bold text-white text-sm">M</div>
+      <h1 class="text-xl font-bold bg-gradient-to-r from-blue-400 via-purple-400 to-pink-400 bg-clip-text text-transparent">MANU</h1>
+    </div>
+    <div id="auth-section">
+      <button id="login-btn" class="flex items-center gap-2 bg-white text-black px-4 py-2 rounded-full font-medium text-sm hover:bg-zinc-200 transition">
+        <i class="ph ph-google-logo text-lg"></i> Sign in with Google
+      </button>
+      <div id="user-profile" class="hidden flex items-center gap-3">
+        <img id="user-avatar" class="w-8 h-8 rounded-full border border-zinc-700" src="" alt="Avatar">
+        <button id="logout-btn" class="text-xs text-zinc-400 hover:text-white border border-zinc-700 px-3 py-1.5 rounded-full">Sign out</button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Chat Area -->
+  <main id="chat-container" class="flex-1 overflow-y-auto p-4 space-y-4 max-w-3xl w-full mx-auto">
+    <!-- Welcome message -->
+    <div id="welcome-box" class="h-full flex flex-col items-center justify-center text-center space-y-3 opacity-90 my-auto py-20">
+      <h2 class="text-3xl md:text-4xl font-semibold bg-gradient-to-r from-blue-400 to-purple-500 bg-clip-text text-transparent">Hello, what can I do for you?</h2>
+      <p class="text-sm text-zinc-400">Ask MANU anything to begin.</p>
+    </div>
+  </main>
+
+  <!-- Input Bar -->
+  <footer class="p-4 max-w-3xl w-full mx-auto">
+    <div class="glass rounded-3xl p-2 flex items-center gap-2">
+      <textarea id="prompt-input" rows="1" placeholder="Ask MANU..." class="bg-transparent flex-1 resize-none outline-none text-sm text-white px-3 py-2 max-h-32"></textarea>
+      <button id="send-btn" class="w-10 h-10 rounded-full bg-white text-black flex items-center justify-center hover:bg-zinc-200 disabled:opacity-40 transition">
+        <i class="ph ph-paper-plane-right text-lg"></i>
+      </button>
+    </div>
+  </footer>
+
+  <!-- Firebase & App Script -->
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+    import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
+
+    // 1. Aapka Firebase Config
+    const firebaseConfig = {
+      apiKey: "AIzaSyBeST1gnsh1gphVCzX72NUKswFkBcP_pog",
+      authDomain: "manu-ai-6417f.firebaseapp.com",
+      projectId: "manu-ai-6417f",
+      storageBucket: "manu-ai-6417f.firebasestorage.app",
+      messagingSenderId: "896983070802",
+      appId: "1:896983070802:web:1cb3c5fa3ab113f13e878b",
+      measurementId: "G-GRY3YZ4HQM"
+    };
+
+    // 2. Aapki Gemini API Key
+    const GEMINI_API_KEY = "AQ.Ab8RN6ISWLT72ZImeUj5Ko8Z7iu7yNfxwIhLQUFvKn7BZ_2icA";
+
+    // Initialize Firebase
+    const app = initializeApp(firebaseConfig);
+    const auth = getAuth(app);
+    const provider = new GoogleAuthProvider();
+
+    // DOM Elements
+    const loginBtn = document.getElementById("login-btn");
+    const logoutBtn = document.getElementById("logout-btn");
+    const userProfile = document.getElementById("user-profile");
+    const userAvatar = document.getElementById("user-avatar");
+    const chatContainer = document.getElementById("chat-container");
+    const promptInput = document.getElementById("prompt-input");
+    const sendBtn = document.getElementById("send-btn");
+    const welcomeBox = document.getElementById("welcome-box");
+
+    let currentUser = null;
+
+    // Auth State Observer
+    onAuthStateChanged(auth, (user) => {
+      currentUser = user;
+      if (user) {
+        loginBtn.classList.add("hidden");
+        userProfile.classList.remove("hidden");
+        userAvatar.src = user.photoURL || "https://api.dicebear.com/7.x/bottts/svg?seed=user";
+      } else {
+        loginBtn.classList.remove("hidden");
+        userProfile.classList.add("hidden");
+      }
+    });
+
+    loginBtn.onclick = () => signInWithPopup(auth, provider);
+    logoutBtn.onclick = () => signOut(auth);
+
+    // Chat handling
+    sendBtn.onclick = handleSend;
+    promptInput.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" && !e.shiftKey) {
+        e.preventDefault();
+        handleSend();
+      }
+    });
+
+    async function handleSend() {
+      const text = promptInput.value.trim();
+      if (!text) return;
+
+      if (!currentUser) {
+        alert("Pehle Google se sign in karein!");
+        return;
+      }
+
+      if (welcomeBox) welcomeBox.style.display = "none";
+      promptInput.value = "";
+      appendMessage("user", text);
+
+      const aiMsgEl = appendMessage("ai", "Thinking...");
+
+      try {
+        const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            contents: [{ parts: [{ text }] }],
+            systemInstruction: { parts: [{ text: "You are MANU, an authentic, smart, and helpful AI assistant." }] }
+          })
+        });
+
+        const data = await response.json();
+        const reply = data?.candidates?.[0]?.content?.parts?.[0]?.text || "Sorry, I could not generate a response.";
+        aiMsgEl.innerHTML = marked.parse(reply);
+      } catch (err) {
+        aiMsgEl.innerText = "Error fetching response. Please check your API key or connection.";
+      }
+
+      chatContainer.scrollTop = chatContainer.scrollHeight;
+    }
+
+    function appendMessage(sender, content) {
+      const wrapper = document.createElement("div");
+      wrapper.className = `flex ${sender === "user" ? "justify-end" : "justify-start"}`;
+
+      const bubble = document.createElement("div");
+      bubble.className = `max-w-[85%] rounded-2xl px-4 py-2.5 text-sm prose ${
+        sender === "user" ? "bg-blue-600 text-white" : "glass text-zinc-200"
+      }`;
+      bubble.innerHTML = sender === "user" ? content : marked.parse(content);
+
+      wrapper.appendChild(bubble);
+      chatContainer.appendChild(wrapper);
+      chatContainer.scrollTop = chatContainer.scrollHeight;
+      return bubble;
+    }
+  </script>
+</body>
+</html>
